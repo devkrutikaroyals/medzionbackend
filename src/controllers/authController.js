@@ -1,221 +1,208 @@
-// const Master = require("../models/Master");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const supabase = require("../config/supabaseClient");
+const sendEmail = require("../../mailer"); // If you don't have this, remove email logic
 
-// const Manufacturer = require("../models/Manufacturer");
-// const bcrypt = require("bcryptjs");
-// const jwt = require("jsonwebtoken");
-// require("dotenv").config();
-
-// // Register User
-// exports.register = async (req, res) => {
-//   try {
-//     let { name, email, password, role } = req.body;
-
-//     if (!name || !email || !password || !role) {
-//       return res.status(400).json({ message: "All fields are required." });
-//     }
-
-//     role = role.trim().toLowerCase();
-
-//     // // Prevent multiple Master registrations
-//     if (role === "master") {
-//       const existingMaster = await Master.findOne();
-//       if (existingMaster) {
-//         return res.status(400).json({ message: "Only one Master can be registered." });
-//       }
-//     }
-
-//     const hashedPassword = await bcrypt.hash(password, 10);
-//     let newUser ;
-
-//     if (role === "master") {
-//       newUser  = new Master({ name, email, password: hashedPassword, role });
-//     } else {
-//       newUser  = new Manufacturer({ name, email, password: hashedPassword, role, isAuthorized: false });
-//     }
-
-//     await newUser .save();
-
-//     res.status(201).json({
-//       message: role === "master" ? "Master registered successfully." : "Manufacturer registered, waiting for approval.",
-//       user: newUser ,
-//     });
-//   } catch (error) {
-//     console.error("🔥 Registration Error:", error);
-//     res.status(500).json({ message: "Server error", error: error.message });
-//   }
-// };
-
-// // Login User
-// // Login User
-// exports.loginUser  = async (req, res) => {
-//   try {
-//     const { email, password, role } = req.body;
-
-//     if (!email || !password || !role) {
-//       return res.status(400).json({ message: "All fields are required." });
-//     }
-
-//     let user;
-//     if (role === "master") {
-//       user = await Master.findOne({ email });
-//     } else if (role === "manufacturer") {
-//       user = await Manufacturer.findOne({ email });
-
-//       // Check if Manufacturer is approved
-//       if (user && !user.isAuthorized) {
-//         return res.status(403).json({ message: "Awaiting Master Admin approval." });
-//       }
-//     } else {
-//       return res.status(400).json({ message: "Invalid role specified." });
-//     }
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User  not found." });
-//     }
-
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       return res.status(401).json({ message: "Incorrect password" });
-//     }
-
-//     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-//       expiresIn: "1h",
-//     });
-
-//     res.status(200).json({
-//       message: "Login successful",
-//       token,
-//       user,
-//       redirect: user.role === "master" ? "/master-dashboard" : "/manufacturer-dashboard",
-//     });
-//   } catch (error) {
-//     console.error("🔥 Login Error:", error);
-//     res.status(500).json({ message: "Internal server error" });
-//   }
-// };
-
-// // Authorize Manufacturer
-// exports.authorizeManufacturer = async (req, res) => {
-//   try {
-//     const { email } = req.body;
-
-//     if (!email) {
-//       return res.status(400).json({ message: "Email is required." });
-//     }
-
-//     const manufacturer = await Manufacturer.findOne({ email });
-
-//     if (!manufacturer) {
-//       return res.status(404).json({ message: "Manufacturer not found." });
-//     }
-
-//     if (manufacturer.isAuthorized) {
-//       return res.status(400).json({ message: "Manufacturer is already approved." });
-//     }
-
-//     manufacturer.isAuthorized = true;
-//     await manufacturer.save();
-
-//     res.status(200).json({ message: "Manufacturer approved successfully." });
-//   } catch (error) {
-//     console.error("🔥 Authorization Error:", error);
-//     res.status(500).json({ message: "Internal server error" });
-//   }
-// };
-
-// // Fetch Pending Manufacturers
-// exports.fetchPendingManufacturers = async (req, res) => {
-//   try {
-//     const pendingManufacturers = await Manufacturer.find({ isAuthorized: false });
-//     res.status(200).json(pendingManufacturers);
-//   } catch (error) {
-//     console.error("🔥 Error fetching pending manufacturers:", error);
-//     res.status(500).json({ message: "Internal server error" });
-//   }
-// };
+require("dotenv").config();
 
 
-// const Master = require("../models/Master");
-// const Manufacturer = require("../models/Manufacturer");
-// const bcrypt = require("bcryptjs");
-// const jwt = require("jsonwebtoken");
-// require("dotenv").config();
+exports.register = async (req, res) => {
+  const { name, email, password, role } = req.body;
 
-// // Register User
-// exports.register = async (req, res) => {
-//   try {
-//     let { name, email, password, role } = req.body;
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
 
-//     if (!name || !email || !password || !role) {
-//       return res.status(400).json({ message: "All fields are required." });
-//     }
+  try {
+    // Only one master allowed, check if already exists
+    if (role === "master") {
+      const { data: existingMasters, error: masterCheckError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("role", "master");
 
-//     role = role.trim().toLowerCase();
+      if (masterCheckError) throw masterCheckError;
 
-//     // Prevent multiple Master registrations
-//     if (role === "master") {
-//       const existingMaster = await Master.findOne();
-//       if (existingMaster) {
-//         return res.status(400).json({ message: "Only one Master can be registered." });
-//       }
-//     }
+      if (existingMasters && existingMasters.length > 0) {
+        return res.status(400).json({ message: "Master already registered." });
+      }
+    }
 
-//     const hashedPassword = await bcrypt.hash(password, 10);
-//     let newUser;
+      // ✅ Trigger email confirmation for manufacturer
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: "https://your-frontend.com/verify-success", // change this!
+      },
+    });
 
-//     if (role === "master") {
-//       newUser = new Master({ name, email, password: hashedPassword, role });
-//     } else {
-//       newUser = new Manufacturer({ name, email, password: hashedPassword, role, isAuthorized: false });
-//     }
+    if (authError || !authData?.user) {
+      console.error("Supabase Auth signup error:", authError);
+      return res.status(400).json({ message: authError?.message || "Signup failed." });
+    }
 
-//     await newUser.save();
+    const userId = authData.user.id;
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-//     res.status(201).json({
-//       message: role === "master" ? "Master registered successfully." : "Manufacturer registered, waiting for approval.",
-//       user: newUser,
-//     });
-//   } catch (error) {
-//     console.error("🔥 Registration Error:", error);
-//     res.status(500).json({ message: "Server error", error: error.message });
-//   }
-// };
+    // Insert user metadata into 'users' table
+    const { data: newUser, error: userError } = await supabase
+      .from("users")
+      .insert([
+        {
+          id: userId,
+          name,
+          email,
+          password: hashedPassword,
+          role,
+          isAuthorized: role === "manufacturer" ? false : true, // Manufacturers require approval
+        },
+      ])
+      .select()
+      .single();
 
-// // Login User
+    if (userError) {
+      console.error("Insert into users table failed:", userError);
+      return res.status(500).json({ message: "User metadata creation failed." });
+    }
+
+    // Insert into role-specific tables
+    if (role === "manufacturer") {
+      // Multiple manufacturers allowed — no check needed here
+      const { error: mfError } = await supabase.from("manufacturers").insert([
+        {
+          name,
+          email,
+          user_id: userId,
+          password: hashedPassword, // optional depending on your schema
+        },
+      ]);
+      if (mfError) {
+        console.error("Manufacturer insert error:", mfError);
+        return res.status(500).json({ message: "Failed to register manufacturer." });
+      }
+    } else if (role === "master") {
+      // Only one master allowed — already checked above
+      const { error: masterError } = await supabase.from("masters").insert([
+        {
+          name,
+          email,
+          user_id: userId,
+          password: hashedPassword,
+        },
+      ]);
+      if (masterError) {
+        console.error("Master insert error:", masterError);
+        return res.status(500).json({ message: "Failed to register master." });
+      }
+    }
+
+    return res.status(201).json({
+      message: "User registered successfully",
+      user: newUser,
+    });
+
+  } catch (error) {
+    console.error("🔥 Registration error:", error);
+    return res.status(500).json({ message: "Registration failed" });
+  }
+};
+
+
+
+
+
+exports.loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required." });
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error || !data.session || !data.user) {
+      console.error("Supabase Auth error:", error);
+      return res.status(401).json({ message: "Invalid email or password." });
+    }
+
+    const user = data.user;
+
+    const { data: userDataList, error: userError } = await supabase
+      .from("users")
+      .select("role, isAuthorized")
+      .eq("id", user.id);
+
+    if (userError || !userDataList || userDataList.length === 0) {
+      return res.status(500).json({ message: "User metadata not found." });
+    }
+
+    const userData = userDataList[0];
+
+    if (userData.role === "manufacturer" && !userData.isAuthorized) {
+      return res.status(403).json({ message: "Awaiting approval from admin." });
+    }
+
+  return res.status(200).json({
+  message: "Login successful",
+  token: data.session.access_token,
+  user: {
+    id: user.id,
+    email: user.email,
+    role: userData.role,
+  },
+  redirect: userData.role === "master" ? "/master-dashboard" : "/manufacturer-dashboard",
+});
+
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ message: "Internal server error." });
+  }
+};
+
+
+
+
+
 // exports.loginUser = async (req, res) => {
 //   try {
 //     const { email, password, role } = req.body;
-
 //     if (!email || !password || !role) {
 //       return res.status(400).json({ message: "All fields are required." });
 //     }
 
-//     let user;
-//     if (role === "master") {
-//       user = await Master.findOne({ email });
-//     } else if (role === "manufacturer") {
-//       user = await Manufacturer.findOne({ email });
+//       const { data, error } = await supabase.auth.signInWithPassword({
+//       email,
+//       password,
+//     });
 
-//       // Check if Manufacturer is approved
-//       if (user && !user.isAuthorized) {
-//         return res.status(403).json({ message: "Awaiting Master Admin approval." });
-//       }
-//     } else {
-//       return res.status(400).json({ message: "Invalid role specified." });
+//     if (error) {
+//       console.error("Supabase error:", error);
+//       return res.status(500).json({ message: "Database error" });
 //     }
 
-//     if (!user) {
+//     if (!users || users.length === 0) {
 //       return res.status(404).json({ message: "User not found." });
 //     }
 
-//     const isMatch = await bcrypt.compare(password, user.password);
-//     if (!isMatch) {
-//       return res.status(401).json({ message: "Incorrect password" });
+//     const user = data.user;
+
+//     if (role === "manufacturer" && !user.isAuthorized) {
+//       return res.status(403).json({ message: "Awaiting approval." });
 //     }
 
-//     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-//       expiresIn: "1h",
-//     });
+//     const isMatch = await bcrypt.compare(password, user.password);
+//     if (!isMatch) return res.status(401).json({ message: "Incorrect password." });
+
+//     const token = jwt.sign(
+//       { id: user.id, role: user.role },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "1h" }
+//     );
 
 //     res.status(200).json({
 //       message: "Login successful",
@@ -224,330 +211,145 @@
 //       redirect: user.role === "master" ? "/master-dashboard" : "/manufacturer-dashboard",
 //     });
 //   } catch (error) {
-//     console.error("🔥 Login Error:", error);
-//     res.status(500).json({ message: "Internal server error" });
-//   }
-// };
-
-// // Authorize Manufacturer
-// exports.authorizeManufacturer = async (req, res) => {
-//   try {
-//     const { email } = req.body;
-
-//     if (!email) {
-//       return res.status(400).json({ message: "Email is required." });
-//     }
-
-//     const manufacturer = await Manufacturer.findOne({ email });
-
-//     if (!manufacturer) {
-//       return res.status(404).json({ message: "Manufacturer not found." });
-//     }
-
-//     if (manufacturer.isAuthorized) {
-//       return res.status(400).json({ message: "Manufacturer is already approved." });
-//     }
-
-//     manufacturer.isAuthorized = true;
-//     await manufacturer.save();
-
-//     res.status(200).json({ message: "Manufacturer approved successfully." });
-//   } catch (error) {
-//     console.error("🔥 Authorization Error:", error);
-//     res.status(500).json({ message: "Internal server error" });
-//   }
-// };
-
-// // Fetch Pending Manufacturers
-// exports.fetchPendingManufacturers = async (req, res) => {
-//   try {
-//     const pendingManufacturers = await Manufacturer.find({ isAuthorized: false });
-//     res.status(200).json(pendingManufacturers);
-//   } catch (error) {
-//     console.error("🔥 Error fetching pending manufacturers:", error);
-//     res.status(500).json({ message: "Internal server error" });
-//   }
-// };
-
-// // Update Password
-// exports.updatePassword = async (req, res) => {
-//   try {
-//     const { email, oldPassword, newPassword } = req.body;
-
-//     if (!email || !oldPassword || !newPassword) {
-//       return res.status(400).json({ message: "All fields are required." });
-//     }
-
-//     // Find the user by email
-//     let user = await Master.findOne({ email });
-//     if (!user) {
-//       user = await Manufacturer.findOne({ email });
-//     }
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found." });
-//     }
-
-//     // Verify the old password
-//     const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
-//     if (!isPasswordValid) {
-//       return res.status(400).json({ message: "Old password is incorrect." });
-//     }
-
-//     // Hash the new password
-//     const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-//     // Update the user's password
-//     user.password = hashedPassword;
-//     await user.save();
-
-//     res.status(200).json({ message: "Password updated successfully." });
-//   } catch (error) {
-//     console.error("🔥 Password Update Error:", error);
+//     console.error("Login error:", error);
 //     res.status(500).json({ message: "Internal server error" });
 //   }
 // };
 
 
-// // Decline Manufacturer
-// exports.declineManufacturer = async (req, res) => {
-//   try {
-//     const { email } = req.body;
-
-//     if (!email) {
-//       return res.status(400).json({ message: "Email is required." });
-//     }
-
-//     const manufacturer = await Manufacturer.findOne({ email });
-
-//     if (!manufacturer) {
-//       return res.status(404).json({ message: "Manufacturer not found." });
-//     }
-
-//     // Delete the manufacturer from the database
-//     await Manufacturer.findOneAndDelete({ email });
-
-//     res.status(200).json({ message: "Manufacturer declined and removed successfully." });
-//   } catch (error) {
-//     console.error("🔥 Decline Error:", error);
-//     res.status(500).json({ message: "Internal server error", error: error.message });
-//   }
-// };
-
-const Master = require("../models/Master");
-const Manufacturer = require("../models/Manufacturer");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const sendEmail = require("../../mailer");
-require("dotenv").config();
-
-// ✅ Register User
-exports.register = async (req, res) => {
-  try {
-    let { name, email, password, role } = req.body;
-
-    if (!name || !email || !password || !role) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
-
-    role = role.trim().toLowerCase();
-
-    if (role === "master") {
-      const existingMaster = await Master.findOne();
-      if (existingMaster) {
-        return res.status(400).json({ message: "Only one Master can be registered." });
-      }
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    let newUser;
-
-    if (role === "master") {
-      newUser = new Master({ name, email, password: hashedPassword, role });
-    } else {
-      newUser = new Manufacturer({ name, email, password: hashedPassword, role, isAuthorized: false });
-
-      const masterAdmin = await Master.findOne();
-      if (masterAdmin) {
-        const approvalLink = `${process.env.FRONTEND_URL}/approve-manufacturer?email=${email}`;
-        const emailText = `A new manufacturer has registered and is awaiting approval.\n\nName: ${name}\nEmail: ${email}\n\nClick the link below to approve or decline:\n${approvalLink}`;
-        await sendEmail(masterAdmin.email, "Manufacturer Approval Request", emailText);
-      }
-    }
-
-    await newUser.save();
-
-    res.status(201).json({
-      message: role === "master" ? "Master registered successfully." : "Manufacturer registered, waiting for approval.",
-      user: newUser,
-    });
-  } catch (error) {
-    console.error("🔥 Registration Error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
-// ✅ Login User
-exports.loginUser = async (req, res) => {
-  try {
-    const { email, password, role } = req.body;
-
-    if (!email || !password || !role) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
-
-    let user;
-    if (role === "master") {
-      user = await Master.findOne({ email });
-    } else if (role === "manufacturer") {
-      user = await Manufacturer.findOne({ email });
-
-      if (user && !user.isAuthorized) {
-        return res.status(403).json({ message: "Awaiting Master Admin approval." });
-      }
-    } else {
-      return res.status(400).json({ message: "Invalid role specified." });
-    }
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Incorrect password" });
-    }
-
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
-
-    res.status(200).json({
-      message: "Login successful",
-      token,
-      user,
-      redirect: user.role === "master" ? "/master-dashboard" : "/manufacturer-dashboard",
-    });
-  } catch (error) {
-    console.error("🔥 Login Error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-// ✅ Approve Manufacturer
 exports.approveManufacturer = async (req, res) => {
+  const { email } = req.query;
+
   try {
-    const { email } = req.query;
+    const { data: user, error: findError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .eq("role", "manufacturer")
+      .single();
 
-    if (!email) {
-      return res.status(400).json({ message: "Email is required." });
-    }
+    if (findError) throw findError;
+    if (!user) return res.status(404).json({ message: "Manufacturer not found" });
+    if (user.isAuthorized) return res.status(400).json({ message: "Already approved" });
 
-    const manufacturer = await Manufacturer.findOne({ email });
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ isAuthorized: true })
+      .eq("email", email);
 
-    if (!manufacturer) {
-      return res.status(404).json({ message: "Manufacturer not found." });
-    }
+    if (updateError) throw updateError;
 
-    if (manufacturer.isAuthorized) {
-      return res.status(400).json({ message: "Manufacturer is already approved." });
-    }
+    await sendEmail(email, "Approved", "Your manufacturer account has been approved.");
 
-    manufacturer.isAuthorized = true;
-    await manufacturer.save();
-
-    const emailText = `Your account has been approved by the master admin. You can now log in.`;
-    await sendEmail(manufacturer.email, "Account Approved", emailText);
-
-    res.status(200).json({ message: "Manufacturer approved successfully." });
+    res.status(200).json({ message: "Manufacturer approved successfully" });
   } catch (error) {
-    console.error("🔥 Approval Error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("🔥 Approve Error:", error.message);
+    res.status(500).json({ message: "Internal error" });
   }
 };
 
-// ✅ Fetch Pending Manufacturers
+// fetch pending manufacturers
 exports.fetchPendingManufacturers = async (req, res) => {
   try {
-    const pendingManufacturers = await Manufacturer.find({ isAuthorized: false });
-    res.status(200).json(pendingManufacturers);
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("role", "manufacturer")
+      .eq("isAuthorized", false);
+
+    if (error) throw error;
+
+    res.status(200).json(data);
   } catch (error) {
-    console.error("🔥 Error fetching pending manufacturers:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("🔥 Fetch Error:", error.message);
+    res.status(500).json({ message: "Error fetching pending manufacturers" });
   }
 };
 
-// ✅ Update Password
-exports.updatePassword = async (req, res) => {
+// authorize manufacturer
+exports.authorizeManufacturer = async (req, res) => {
+  const { email } = req.body;
+
   try {
-    const { email, oldPassword, newPassword } = req.body;
+    const { data: user, error: findError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .eq("role", "manufacturer")
+      .single();
 
-    if (!email || !oldPassword || !newPassword) {
-      return res.status(400).json({ message: "All fields are required." });
-    }
+    if (findError) throw findError;
+    if (!user) return res.status(404).json({ message: "Manufacturer not found" });
+    if (user.isAuthorized) return res.status(400).json({ message: "Already approved" });
 
-    let user = await Master.findOne({ email }) || await Manufacturer.findOne({ email });
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ isAuthorized: true })
+      .eq("email", email);
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (updateError) throw updateError;
 
-    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
-    if (!isPasswordValid) {
-      return res.status(400).json({ message: "Old password is incorrect." });
-    }
+    // Optional: Notify via email
+    await sendEmail(email, "Approved", "Your manufacturer account has been approved.");
 
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
+    res.status(200).json({ message: "Manufacturer approved successfully" });
+  } catch (error) {
+    console.error("🔥 Authorization Error:", error.message);
+    res.status(500).json({ message: "Internal error" });
+  }
+};
+
+// decline manufacturer
+exports.declineManufacturer = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    const { error } = await supabase
+      .from("users")
+      .delete()
+      .eq("email", email)
+      .eq("role", "manufacturer");
+
+    if (error) throw error;
+
+    res.status(200).json({ message: "Manufacturer declined and deleted." });
+  } catch (error) {
+    console.error("🔥 Decline Error:", error.message);
+    res.status(500).json({ message: "Internal error" });
+  }
+};
+exports.updatePassword = async (req, res) => {
+  const { email, currentPassword, newPassword } = req.body;
+
+  if (!email || !currentPassword || !newPassword) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  try {
+    const { data: user, error: fetchError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .single();
+
+    if (fetchError) throw fetchError;
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) return res.status(401).json({ message: "Incorrect current password." });
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ password: hashedPassword })
+      .eq("email", email);
+
+    if (updateError) throw updateError;
 
     res.status(200).json({ message: "Password updated successfully." });
   } catch (error) {
-    console.error("🔥 Password Update Error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-// ✅ Decline Manufacturer
-exports.declineManufacturer = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: "Email is required." });
-    }
-
-    const manufacturer = await Manufacturer.findOne({ email });
-
-    if (!manufacturer) {
-      return res.status(404).json({ message: "Manufacturer not found." });
-    }
-
-    await Manufacturer.findOneAndDelete({ email });
-
-    res.status(200).json({ message: "Manufacturer declined and removed successfully." });
-  } catch (error) {
-    console.error("🔥 Decline Error:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
-  }
-};
-
-// ✅ Authorize Manufacturer
-exports.authorizeManufacturer = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const manufacturer = await Manufacturer.findOne({ email });
-
-    if (!manufacturer) {
-      return res.status(404).json({ message: "Manufacturer not found." });
-    }
-
-    manufacturer.isAuthorized = true;
-    await manufacturer.save();
-
-    res.status(200).json({ message: "Manufacturer authorized successfully." });
-  } catch (error) {
-    console.error("🔥 Authorization Error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("🔥 Password Update Error:", error.message);
+    res.status(500).json({ message: "Internal server error." });
   }
 };
