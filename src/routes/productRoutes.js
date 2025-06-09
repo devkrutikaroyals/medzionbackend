@@ -392,28 +392,66 @@ router.delete("/:id", authenticate, async (req, res) => {
 
 
 // UPDATE stock
-router.put("/update-stock/:id", authenticate, async (req, res) => {
+router.put('/update-stock/:id', authenticate, async (req, res) => {
   try {
-    const { data: product, error: fetchError } = await supabase.from("products").select("*").eq("id", req.params.id).single();
+    const productId = req.params.id;
+    const quantityChange = req.body.quantity;
 
-    if (fetchError || !product) {
-      return res.status(404).json({ message: "Product not found", error: fetchError?.message });
+    // Fetch product by ID
+    const { data: products, error: fetchError } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', productId);
+
+    if (fetchError || !products || products.length === 0) {
+      return res.status(404).json({ message: 'Product not found', error: fetchError?.message });
     }
 
-    if (req.user.role !== "master" && product.manufacturer !== req.user.id) {
+    const product = products[0];
+
+    // Fetch manufacturer entity from user_id
+    const { data: manufacturerData, error: manufacturerError } = await supabase
+      .from('manufacturers')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (manufacturerError || !manufacturerData) {
+      return res.status(403).json({ message: 'Manufacturer not found or unauthorized' });
+    }
+
+    // Authorization check: product.manufacturer_id must match manufacturer id
+    if (product.manufacturer_id !== manufacturerData.id) {
       return res.status(403).json({ message: "Not authorized to update this product" });
     }
 
-    const newStock = product.stock + req.body.quantity;
-    if (newStock < 0) return res.status(400).json({ message: "Insufficient stock" });
+    // Calculate new stock
+    const newStock = product.stock + quantityChange;
+    if (newStock < 0) {
+      return res.status(400).json({ message: 'Insufficient stock' });
+    }
 
-    const { error, data } = await supabase.from("products").update({ stock: newStock }).eq("id", req.params.id);
-    if (error) return res.status(500).json({ message: "Stock update failed", error: error.message });
+    // Update stock in Supabase
+    const { data: updatedProduct, error: updateError } = await supabase
+      .from('products')
+      .update({ stock: newStock, updated_at: new Date().toISOString() })
+      .eq('id', productId)
+      .select();
 
-    res.json({ success: true, message: "Stock updated successfully", product: data[0] });
+    if (updateError) {
+      return res.status(500).json({ message: 'Stock update failed', error: updateError.message });
+    }
+
+    res.json({
+      success: true,
+      message: 'Stock updated successfully',
+      product: updatedProduct[0],
+    });
   } catch (error) {
-    res.status(500).json({ message: "Server Error", error: error.message });
+    console.error('Error updating stock:', error);
+    res.status(500).json({ message: 'Server Error', error: error.message });
   }
 });
+
 
 module.exports = router;
