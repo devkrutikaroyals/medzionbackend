@@ -1,6 +1,6 @@
 const fetchProducts = async () => {
     try {
-      const response = await axios.get("https://medzionbackend.onrender.com/api/product/all-items");
+      const response = await axios.get("http://localhost:5000/api/product/all-items");
       console.log("API Response:", response.data); // Debugging line
       if (Array.isArray(response.data)) {
         setProducts(response.data);
@@ -14,7 +14,7 @@ const fetchProducts = async () => {
   };
   const fetchDashboardCounts = async () => {
     try {
-      const response = await axios.get("https://medzionbackend.onrender.com/api/manufacturer/counts");
+      const response = await axios.get("http://localhost:5000/api/manufacturer/counts");
       setCounts(response.data);
     } catch (error) {
       console.error("Error fetching manufacturer counts:", error);
